@@ -20,6 +20,13 @@
 
 ## 快速开始
 
+### 克隆项目
+
+```bash
+git clone https://github.com/Rural-Silicon-Valley/PerserverAi.git
+cd PerserverAi/healing-diary-app
+```
+
 ### 安装依赖
 
 ```bash
