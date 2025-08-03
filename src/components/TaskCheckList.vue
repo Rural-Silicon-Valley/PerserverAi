@@ -16,17 +16,25 @@
         v-for="task in tasks" 
         :key="task.id"
         class="task-item"
-        :class="{ 'task-completed': task.isCompleted }"
+        :class="{ 
+          'task-completed': isTaskCompleted(task),
+          'task-duration': task.isDuration
+        }"
       >
         <div class="checkbox-container" @click.stop="toggleTask(task)">
-          <div class="custom-checkbox" :class="{ checked: task.isCompleted }">
-            <span class="checkmark" v-if="task.isCompleted">✓</span>
+          <div class="custom-checkbox" :class="{ checked: isTaskCompleted(task) }">
+            <span class="checkmark" v-if="isTaskCompleted(task)">✓</span>
           </div>
         </div>
         
         <div class="task-content" @click="toggleTask(task)">
           <img :src="getTaskIconUrl(task.icon)" class="task-icon" />
-          <span class="task-title" :class="{ 'completed-text': task.isCompleted }">{{ task.title }}</span>
+          <div class="task-info">
+            <span class="task-title" :class="{ 'completed-text': isTaskCompleted(task) }">{{ task.title }}</span>
+            <span v-if="task.isDuration" class="task-duration-badge">
+              持续任务 ({{ formatDurationPeriod(task) }})
+            </span>
+          </div>
         </div>
         
         <button class="delete-btn" @click.stop="deleteTask(task.id)">×</button>
@@ -48,6 +56,36 @@
             v-model="newTask.title" 
             placeholder="今天要做什么呢？"
             class="task-input"
+          />
+        </div>
+        
+        <div class="form-group">
+          <label>任务类型</label>
+          <div class="task-type-selector">
+            <div 
+              class="task-type-option"
+              :class="{ selected: !newTask.isDuration }"
+              @click="newTask.isDuration = false"
+            >
+              单日任务
+            </div>
+            <div 
+              class="task-type-option"
+              :class="{ selected: newTask.isDuration }"
+              @click="newTask.isDuration = true"
+            >
+              持续任务
+            </div>
+          </div>
+        </div>
+        
+        <div class="form-group" v-if="newTask.isDuration">
+          <label>结束日期</label>
+          <input 
+            type="date" 
+            v-model="newTask.durationEndDate" 
+            class="task-input date-input"
+            :min="minEndDate"
           />
         </div>
         
@@ -149,12 +187,22 @@ const availableIcons = [
 // 新任务表单
 const newTask = reactive({
   title: '',
-  icon: ''
+  icon: '',
+  isDuration: false,
+  durationEndDate: ''
 });
 
 // UI状态
 const showAddTaskDialog = ref(false);
 const iconFileInput = ref<HTMLInputElement | null>(null);
+
+// 计算属性
+const minEndDate = computed(() => {
+  // 最小结束日期为当前选择日期的第二天
+  const startDate = new Date(store.selectedDate);
+  startDate.setDate(startDate.getDate() + 1);
+  return formatDate(startDate);
+});
 
 // 自定义图标
 
@@ -181,6 +229,34 @@ const cancelAddTask = () => {
   showAddTaskDialog.value = false;
   newTask.title = '';
   newTask.icon = '';
+  newTask.isDuration = false;
+  newTask.durationEndDate = '';
+};
+
+// 检查任务是否已完成（考虑持续任务和普通任务）
+const isTaskCompleted = (task: Task): boolean => {
+  if (task.isDuration) {
+    const dateStr = store.selectedDate;
+    return Boolean(task.durationStatus?.[dateStr]);
+  } else {
+    return task.isCompleted;
+  }
+};
+
+// 格式化持续任务的时间段
+const formatDurationPeriod = (task: Task): string => {
+  if (!task.isDuration || !task.durationEndDate) {
+    return '';
+  }
+  
+  const startDate = new Date(task.date);
+  const endDate = new Date(task.durationEndDate);
+  
+  // 计算时间差（天数）
+  const diffTime = endDate.getTime() - startDate.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  return `${diffDays}天`;
 };
 
 // 确认添加任务
@@ -190,26 +266,61 @@ const confirmAddTask = () => {
   // 使用store中的selectedDate
   const dateStr = store.selectedDate;
   
-  store.addTask({
+  // 创建任务对象
+  const taskData: Partial<Task> = {
     title: newTask.title,
     icon: newTask.icon,
     isCompleted: false,
     date: dateStr
-  });
+  };
+  
+  // 如果是持续任务，添加相关属性
+  if (newTask.isDuration) {
+    if (!newTask.durationEndDate) {
+      alert('请选择结束日期');
+      return;
+    }
+    
+    taskData.isDuration = true;
+    taskData.durationEndDate = newTask.durationEndDate;
+    taskData.durationStatus = { [dateStr]: false }; // 初始化当天的状态
+  }
+  
+  // 添加任务
+  store.addTask(taskData);
   
   playSound(SoundType.TAP);
   showAddTaskDialog.value = false;
   newTask.title = '';
   newTask.icon = '';
+  newTask.isDuration = false;
+  newTask.durationEndDate = '';
 };
 
 // 切换任务完成状态
 const toggleTask = (task: Task) => {
-  const newStatus = !task.isCompleted;
+  const dateStr = store.selectedDate;
+  let newStatus = false;
   
-  store.updateTask(task.id, {
-    isCompleted: newStatus
-  });
+  if (task.isDuration) {
+    // 对于持续任务，我们更新当前日期的完成状态
+    const durationStatus = task.durationStatus || {};
+    newStatus = !(durationStatus[dateStr] || false);
+    
+    // 更新当前日期的状态
+    store.updateTask(task.id, {
+      durationStatus: {
+        ...durationStatus,
+        [dateStr]: newStatus
+      }
+    });
+  } else {
+    // 对于普通任务，直接切换完成状态
+    newStatus = !task.isCompleted;
+    store.updateTask(task.id, {
+      isCompleted: newStatus
+    });
+  }
   
   if (newStatus) {
     playSound(SoundType.TASK_COMPLETE);
@@ -405,8 +516,23 @@ onMounted(() => {
   margin-right: var(--spacing-sm);
 }
 
+.task-info {
+  display: flex;
+  flex-direction: column;
+}
+
 .task-title {
   font-size: 1rem;
+}
+
+.task-duration-badge {
+  font-size: 0.75rem;
+  color: var(--color-monet-blue);
+  margin-top: 2px;
+}
+
+.task-duration {
+  border-left: 3px solid var(--color-monet-blue);
 }
 
 .completed-text {
@@ -560,6 +686,32 @@ onMounted(() => {
   height: 0;
   opacity: 0;
   overflow: hidden;
+}
+
+.task-type-selector {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.task-type-option {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-sm);
+  background-color: rgba(255, 255, 255, 0.7);
+  border: 1px dashed #ddd;
+  cursor: pointer;
+  flex: 1;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.task-type-option.selected {
+  background-color: var(--color-mint-green);
+  color: #fff;
+  border-color: var(--color-mint-green);
+}
+
+.date-input {
+  font-family: var(--font-primary);
 }
 
 .dialog-buttons {

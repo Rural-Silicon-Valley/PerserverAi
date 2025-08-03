@@ -137,12 +137,43 @@ const selectDate = (date: Date) => {
 // 任务相关方法
 const hasTask = (date: Date) => {
   const dateStr = formatDate(date);
-  return store.tasks.some(task => task.date === dateStr);
+  return store.tasks.some(task => {
+    // 检查是否是普通任务
+    if (task.date === dateStr) {
+      return true;
+    }
+    
+    // 检查是否是在日期范围内的持续任务
+    if (task.isDuration && task.durationEndDate) {
+      const taskStartDate = new Date(task.date);
+      const taskEndDate = new Date(task.durationEndDate);
+      const checkDate = new Date(dateStr);
+      
+      return checkDate >= taskStartDate && checkDate <= taskEndDate;
+    }
+    
+    return false;
+  });
 };
 
 const getTasksForDate = (date: Date) => {
   const dateStr = formatDate(date);
-  return store.tasks.filter(task => task.date === dateStr);
+  
+  // 获取当天开始的任务
+  const regularTasks = store.tasks.filter(task => task.date === dateStr);
+  
+  // 获取当天属于持续任务范围内的任务
+  const durationTasks = store.tasks.filter(task => {
+    if (!task.isDuration || !task.durationEndDate) return false;
+    
+    const taskStartDate = new Date(task.date);
+    const taskEndDate = new Date(task.durationEndDate);
+    const checkDate = new Date(dateStr);
+    
+    return checkDate >= taskStartDate && checkDate <= taskEndDate && task.date !== dateStr;
+  });
+  
+  return [...regularTasks, ...durationTasks];
 };
 
 const getTaskIconUrl = (iconName: string) => {
@@ -160,7 +191,23 @@ const getTaskIconUrl = (iconName: string) => {
 
 const isTaskCompleted = (date: Date) => {
   const dateStr = formatDate(date);
-  return store.tasks.some(task => task.date === dateStr && task.isCompleted);
+  return store.tasks.some(task => {
+    // 检查普通任务
+    if (task.date === dateStr && task.isCompleted) {
+      return true;
+    }
+    
+    // 检查持续任务
+    if (task.isDuration && task.durationStatus?.[dateStr]) {
+      const taskStartDate = new Date(task.date);
+      const taskEndDate = new Date(task.durationEndDate || '');
+      const checkDate = new Date(dateStr);
+      
+      return checkDate >= taskStartDate && checkDate <= taskEndDate;
+    }
+    
+    return false;
+  });
 };
 
 // 日记相关方法

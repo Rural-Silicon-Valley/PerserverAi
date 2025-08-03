@@ -10,6 +10,9 @@ export interface Task {
     isCompleted: boolean;
     date: string; // YYYY-MM-DD格式
     completedTime?: string;
+    isDuration?: boolean; // 是否是持续任务
+    durationEndDate?: string; // 持续结束日期 YYYY-MM-DD格式
+    durationStatus?: { [date: string]: boolean }; // 按日期记录持续任务的完成状态
 }
 
 /**

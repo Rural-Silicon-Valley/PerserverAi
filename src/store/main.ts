@@ -81,11 +81,17 @@ export const useMainStore = defineStore('main', {
         },
 
         // 添加新任务
-        addTask(task: Omit<Task, 'id'>) {
+        addTask(task: Partial<Omit<Task, 'id'>>) {
             const id = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
             const newTask: Task = {
-                ...task,
+                title: task.title || '',
+                icon: task.icon || '',
+                isCompleted: task.isCompleted || false,
+                date: task.date || this.selectedDate,
+                isDuration: task.isDuration || false,
                 id,
+                ...(task.durationEndDate ? { durationEndDate: task.durationEndDate } : {}),
+                ...(task.durationStatus ? { durationStatus: task.durationStatus } : {})
             };
 
             this.tasks.push(newTask);
